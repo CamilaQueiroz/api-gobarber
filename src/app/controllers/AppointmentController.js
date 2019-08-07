@@ -1,5 +1,5 @@
 import * as Yup from 'yup';
-import { startOfHour, parseISO, isBefore, format } from 'date-fns';
+import { startOfHour, parseISO, isBefore, format, subHours } from 'date-fns';
 import pt from 'date-fns/locale/pt';
 import Appointment from '../models/Appointments';
 import User from '../models/User';
@@ -46,7 +46,14 @@ class AppointmentController {
     if (!(await schema.isValid(req.body))) {
       return res.status(401).json({ error: 'Validation fails' });
     }
+
     const { provider_id, date } = req.body;
+
+    if (req.userId === provider_id) {
+      return res
+        .status(401)
+        .json({ error: 'Is not possible create appointments for yourself' });
+    }
 
     /**
      * Check if provider_id is a provider
@@ -107,6 +114,28 @@ class AppointmentController {
       content: `Novo agendamento de ${user.name} para ${formattedDate}`,
       user: provider_id,
     });
+
+    return res.json(appointment);
+  }
+
+  async delete(req, res) {
+    const appointment = await Appointment.findByPk(req.params.id);
+    if (appointment.user_id !== req.userId) {
+      return res
+        .status(401)
+        .json({ error: 'You dont have permission to delete this appointment' });
+    }
+
+    const dateWithSub = subHours(appointment.date, 2);
+
+    if (isBefore(dateWithSub, new Date())) {
+      return res.status(401).json({
+        error: 'You can only cancel appointments 2 hours in advance.',
+      });
+    }
+
+    appointment.canceled_at = new Date();
+    await appointment.save();
 
     return res.json(appointment);
   }
